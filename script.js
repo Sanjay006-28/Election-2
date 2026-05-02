@@ -17,6 +17,12 @@ const MAP_API_KEY = "YOUR_GOOGLE_MAPS_API_KEY";
 const FIREBASE_CONFIG = Object.freeze({ apiKey: "demo", projectId: "demo", appId: "demo", measurementId: "demo" });
 const GOOGLE_CLIENT_ID = "demo.apps.googleusercontent.com";
 const GOOGLE_ANALYTICS_ID = "G-DEMO1234";
+const MAX_INPUT_LENGTH = 499;
+const TYPING_DELAY_MS = 520;
+const REVEAL_TIMEOUT_MS = 3200;
+const IDLE_TIMEOUT_MS = 1500;
+const IDLE_FALLBACK_MS = 300;
+const MAP_DEFAULT_ZOOM = 13;
 
 const MOCK_BOOTHS = [
   { id: 1, name: "City Hall Voting Center", address: "123 Main St, Downtown", distance: "0.4 mi", lat: 37.7749, lng: -122.4194, hours: "7AM-8PM" },
@@ -95,7 +101,14 @@ const validateAge = (val) => {
  * @param {unknown} str - Chat input candidate.
  * @returns {boolean} True when the input is non-empty and short enough.
  */
-const validateInput = (str) => typeof str === "string" && str.trim().length > 0 && str.length < 500;
+const validateInput = (str) => typeof str === "string" && str.trim().length > 0 && str.length < MAX_INPUT_LENGTH + 1;
+
+/**
+ * Enforces a safe max length for any user-supplied text.
+ * @param {string} input - Raw input.
+ * @returns {string} Trimmed value within limits.
+ */
+const enforceMaxLength = (input) => String(input).slice(0, MAX_INPUT_LENGTH);
 
 /**
  * Determines the civic eligibility outcome from age and citizenship.
@@ -198,10 +211,10 @@ async function checkGoogleServiceExtended() {
  */
 const scheduleIdleTask = (task) => {
   if ("requestIdleCallback" in window) {
-    window.requestIdleCallback(task, { timeout: 1500 });
+    window.requestIdleCallback(task, { timeout: IDLE_TIMEOUT_MS });
     return;
   }
-  window.setTimeout(task, 300);
+  window.setTimeout(task, IDLE_FALLBACK_MS);
 };
 
 scheduleIdleTask(() => checkGoogleService());
@@ -314,7 +327,7 @@ function initMap() {
 
     const map = new window.google.maps.Map(mapElement, {
       center,
-      zoom: 13,
+      zoom: MAP_DEFAULT_ZOOM,
       disableDefaultUI: true,
       clickableIcons: false,
       styles: [
@@ -401,7 +414,7 @@ const ensureAnimatedContentVisible = () => {
 const runLoadAnimation = () => {
   if (typeof gsap === "undefined") return;
 
-  const revealTimer = window.setTimeout(ensureAnimatedContentVisible, 3200);
+  const revealTimer = window.setTimeout(ensureAnimatedContentVisible, REVEAL_TIMEOUT_MS);
 
   try {
     const tl = gsap.timeline({
@@ -620,6 +633,7 @@ const showTypingIndicator = () => {
   stack.append(bubble);
   container.append(avatar, stack);
   elements.chatLog.append(container);
+  elements.chatLog.setAttribute("aria-busy", "true");
   typingNode = container;
   scrollChatToBottom();
 
@@ -648,6 +662,7 @@ const removeTypingIndicator = (container) => {
     gsap.killTweensOf(container.querySelectorAll(".dot"));
   }
   container.remove();
+  elements.chatLog.setAttribute("aria-busy", "false");
   if (typingNode === container) typingNode = null;
 };
 
@@ -658,7 +673,7 @@ const removeTypingIndicator = (container) => {
  */
 const setSuggestions = (suggestions) => {
   elements.suggestionChips.replaceChildren();
-
+  const fragment = document.createDocumentFragment();
   suggestions.forEach((suggestion) => {
     const button = createElement("button", "suggestion-chip", suggestion.label);
     button.type = "button";
@@ -666,8 +681,10 @@ const setSuggestions = (suggestions) => {
     button.setAttribute("aria-label", `Ask VoteIQ: ${suggestion.prompt}`);
     button.addEventListener("click", handleSuggestionClick);
     attachButtonFeedback(button);
-    elements.suggestionChips.append(button);
+    fragment.append(button);
   });
+
+  elements.suggestionChips.append(fragment);
 
   animateSuggestionChips(elements.suggestionChips.querySelectorAll(".suggestion-chip"));
 };
@@ -926,12 +943,13 @@ const getAssistantResponse = (input) => {
  * @returns {void}
  */
 const submitChatPrompt = (rawInput) => {
-  if (!validateInput(rawInput)) {
+  const normalizedInput = enforceMaxLength(rawInput);
+  if (!validateInput(normalizedInput)) {
     addMessage("Please enter a question under 500 characters.", "bot");
     return;
   }
 
-  const trimmed = rawInput.trim();
+  const trimmed = normalizedInput.trim();
   const safeText = sanitizeInput(trimmed);
   addMessage(safeText, "user");
   elements.chatInput.value = "";
@@ -943,7 +961,7 @@ const submitChatPrompt = (rawInput) => {
     const response = getAssistantResponse(trimmed);
     addMessage(response.message, "bot");
     setSuggestions(response.suggestions);
-  }, 520);
+  }, TYPING_DELAY_MS);
 };
 
 /**
@@ -953,7 +971,7 @@ const submitChatPrompt = (rawInput) => {
  */
 const handleChatSubmit = (event) => {
   event.preventDefault();
-  const rawInput = elements.chatInput.value;
+  const rawInput = enforceMaxLength(elements.chatInput.value);
 
   if (!validateInput(rawInput)) {
     elements.chatInput.setAttribute("aria-invalid", "true");
@@ -1117,7 +1135,7 @@ const handleDirectionClick = (event) => {
  */
 const renderBoothCards = () => {
   elements.boothList.replaceChildren();
-
+  const fragment = document.createDocumentFragment();
   MOCK_BOOTHS.forEach((booth) => {
     const card = createElement("article", "booth-card");
     const header = createElement("div", "booth-header");
@@ -1134,8 +1152,10 @@ const renderBoothCards = () => {
     attachButtonFeedback(button);
     header.append(title, distance);
     card.append(header, address, hours, button);
-    elements.boothList.append(card);
+    fragment.append(card);
   });
+
+  elements.boothList.append(fragment);
 
   animateBoothCards(elements.boothList.querySelectorAll(".booth-card"));
 };
@@ -1292,12 +1312,33 @@ const runTestCases = () => [
   createTestResult("validateAge(99) === true", validateAge(99), true),
   createTestResult('sanitizeInput("<script>") === "&lt;script&gt;"', sanitizeInput("<script>"), "&lt;script&gt;"),
   createTestResult('sanitizeInput("&") === "&amp;"', sanitizeInput("&"), "&amp;"),
+  createTestResult("extractAge('Age 22') === 22", extractAge("Age 22"), 22),
+  createTestResult("extractAge('no age') === null", extractAge("no age"), null),
+  createTestResult("parseCitizenship('yes') === true", parseCitizenship("yes"), true),
+  createTestResult("parseCitizenship('no') === false", parseCitizenship("no"), false),
+  createTestResult("containsAny('register now', ['register']) === true", containsAny("register now", ["register"]), true),
+  createTestResult(
+    "enforceMaxLength('a'.repeat(600)).length === 499",
+    enforceMaxLength("a".repeat(600)).length,
+    MAX_INPUT_LENGTH
+  ),
+  createTestResult("validateInput(enforceMaxLength('a'.repeat(600))) === true", validateInput(enforceMaxLength("a".repeat(600))), true),
   createTestResult('detectIntent("am I eligible") === "ELIGIBILITY"', detectIntent("am I eligible"), "ELIGIBILITY"),
   createTestResult('detectIntent("where is polling booth") === "POLLING_BOOTH"', detectIntent("where is polling booth"), "POLLING_BOOTH"),
   createTestResult('detectIntent("add to calendar") === "CALENDAR"', detectIntent("add to calendar"), "CALENDAR"),
   createTestResult('validateInput("") === false', validateInput(""), false),
   createTestResult('validateInput("hello") === true', validateInput("hello"), true)
 ];
+
+/**
+ * Logs a compact summary of test results to the console.
+ * @param {{name:string,passed:boolean}[]} results - Test results.
+ * @returns {void}
+ */
+const logTestSummary = (results) => {
+  const passedCount = results.filter((result) => result.passed).length;
+  console.log(`VoteIQ tests: ${passedCount}/${results.length} passing`);
+};
 
 /**
  * Builds a lightweight diagnostics report for evaluators.
@@ -1331,6 +1372,8 @@ const renderDiagnosticsPanel = () => {
 
   const heading = createElement("h2", "", "Diagnostics");
   const summary = createElement("p", "", "Realtime signals for evaluation");
+  summary.setAttribute("role", "status");
+  summary.setAttribute("aria-live", "polite");
   const list = createElement("ul", "diagnostic-list");
 
   buildDiagnosticsReport().forEach((row) => {
@@ -1376,7 +1419,9 @@ const renderTestPanel = (results) => {
 const runTestsIfRequested = () => {
   const params = new URLSearchParams(window.location.search);
   if (params.get("test") !== "true") return;
-  renderTestPanel(runTestCases());
+  const results = runTestCases();
+  renderTestPanel(results);
+  logTestSummary(results);
 };
 
 /**
@@ -1509,6 +1554,7 @@ const init = () => {
   initGoogleAnalytics();
   initFirebase();
   initGoogleIdentity();
+  const startTime = performance.now();
   bindEvents();
   setupDisclosures();
   initMap();
@@ -1521,6 +1567,8 @@ const init = () => {
   runTestsIfRequested();
   renderDiagnosticsPanel();
   exposePublicAPI();
+  const endTime = performance.now();
+  console.log(`VoteIQ init time: ${Math.round(endTime - startTime)}ms`);
 };
 
 document.addEventListener("DOMContentLoaded", init);
@@ -1530,6 +1578,7 @@ document.addEventListener("DOMContentLoaded", init);
  * @returns {void}
  */
 function runEvaluationChecks() {
+  const results = runTestCases();
   console.assert(checkEligibility(20, true) === "ELIGIBLE", "Eligibility: adult citizen should be eligible");
   console.assert(checkEligibility(16, true) === "NOT_ELIGIBLE_AGE", "Eligibility: minor should be blocked");
   console.assert(checkEligibility(30, false) === "NOT_ELIGIBLE_CITIZEN", "Eligibility: non-citizen should be blocked");
@@ -1541,6 +1590,9 @@ function runEvaluationChecks() {
   console.assert(detectIntent("Where is my polling booth?") === "POLLING_BOOTH", "Intent: booth recognized");
   console.assert(typeof buildDirectionsURL(MOCK_BOOTHS[0]) === "string", "Directions URL is generated");
   console.assert(typeof buildCalendarURL() === "string", "Calendar URL is generated");
+  console.assert(enforceMaxLength("x".repeat(800)).length === 499, "Security: max length enforced");
+  console.assert(sanitizeInput("<img onerror=alert(1)>").includes("&lt;"), "Security: HTML sanitized");
+  logTestSummary(results);
 }
 
 runEvaluationChecks();

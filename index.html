@@ -290,6 +290,7 @@
               class="map-grid google-map map-placeholder"
               role="img"
               aria-label="Google Maps API-ready polling station map"
+              aria-describedby="map-help"
               tabindex="0"
             >
               <span class="map-pin pin-one" aria-hidden="true"></span>
@@ -298,6 +299,8 @@
               <span class="map-status">Google Maps API-ready preview</span>
             </div>
           </div>
+
+          <p id="map-help" class="sr-only">Press Enter to open Google Maps directions for the closest polling booth.</p>
 
           <button id="directions-button" class="btn btn-gold" type="button" aria-label="Get directions to the closest polling booth">
             <span aria-hidden="true">➤</span>

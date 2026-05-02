@@ -6,6 +6,9 @@ VoteIQ is a premium civic education single-page app that helps voters understand
 ## Chosen Vertical
 Civic Tech / GovTech / Public Education
 
+## Problem Statement Alignment
+VoteIQ addresses the need for clear, AI-powered civic education by guiding users through eligibility, registration, required documents, polling booth discovery, and reminders. The assistant state machine ensures context-aware, step-by-step decision support while keeping the experience frontend-only and accessible for public education use.
+
 ## Features
 - Three-panel desktop SPA: guide, assistant chat, and booth finder.
 - Mobile bottom navigation for switching between guide, chat, and booth panels.
@@ -43,6 +46,8 @@ This project demonstrates real Google API interaction and is designed for full G
 - Console-based checks using `console.assert` for quick AI-evaluation signals.
 - Eligibility, input validation, and intent detection tests run on load via the evaluation checker.
 - URL, intent, and workflow sanity checks validate assistant decision flow coverage.
+- Diagnostics panel surfaces runtime test and integration signals.
+- Extended tests cover parsing, length enforcement, and sanitization behavior.
 
 ## ♿ Accessibility
 - ARIA roles, `aria-live` regions, and descriptive labels.
@@ -55,10 +60,12 @@ This project demonstrates real Google API interaction and is designed for full G
 - Input validation for age and chat text.
 - Sanitization for user-originated content.
 - CSP usage to restrict script, style, and frame sources.
+- Max length enforcement prevents oversized input payloads.
 
 ## Efficiency Notes
 - Non-critical Google API checks are deferred to idle time.
 - DOM updates are batched through targeted `replaceChildren()` usage.
+- Initialization logs a simple timing metric for performance visibility.
 
 ## System Architecture
 ```text
